@@ -32,11 +32,11 @@
     <ElButton type="danger" @click="onClear" @mousedown.prevent>重置</ElButton>
 
     <VueDraggable v-model="data" :animation="150" target="tbody">
-      <ElTable :data="data" :max-height="500" border>
+      <ElTable :data="data" :max-height="500" border row-key="id">
         <ElTableColumn prop="type" label="方法" :formatter="typeFomatter"></ElTableColumn>
         <ElTableColumn prop="prop" label="属性">
           <template #default="{ row }: { row: AutoUnpackMethod }">
-            {{ omit(row, ['type', 'description']) }}
+            {{ omit(row, ['type', 'description', 'id']) }}
           </template>
         </ElTableColumn>
         <ElTableColumn prop="description" label="描述"></ElTableColumn>
@@ -82,38 +82,61 @@
     <ElButton class="mt-4 mb-4" :icon="Upload" @click="onImportProduction" @mousedown.prevent>
       导入
     </ElButton>
-    <ElTable :data="production" :max-height="500" border>
-      <ElTableColumn prop="name" label="名称">
-        <template #default="{ row }">
-          <ElInput v-model="row.name" class="!w-80" placeholder="给脚本取个名吧"></ElInput>
-        </template>
-      </ElTableColumn>
-      <ElTableColumn prop="action" label="操作" width="120">
-        <template #default="{ row, $index }">
-          <ElButton
-            :icon="VideoPlay"
-            size="small"
-            type="primary"
-            @click="onPlay(row.script)"
-            @mousedown.prevent
-          />
-          <ElButton
-            :icon="Delete"
-            type="danger"
-            size="small"
-            @click="onProductionDelete($index)"
-            @mousedown.prevent
-          ></ElButton>
-        </template>
-      </ElTableColumn>
-    </ElTable>
+    <ElButton
+      :disabled="selectedProduction.length === 0"
+      class="mt-4 mb-4"
+      :icon="Promotion"
+      @click="onExecute"
+      @mousedown.prevent
+    >
+      顺序执行
+    </ElButton>
+
+    <VueDraggable v-model="production" :animation="150" target="tbody">
+      <ElTable
+        :data="production"
+        :max-height="500"
+        border
+        @selection-change="onProductionSelectionChange"
+      >
+        <ElTableColumn type="selection"> </ElTableColumn>
+        <ElTableColumn prop="name" label="名称">
+          <template #default="{ row }">
+            <ElInput v-model="row.name" class="!w-80" placeholder="给脚本取个名吧"></ElInput>
+          </template>
+        </ElTableColumn>
+        <ElTableColumn prop="loop" label="循环">
+          <template #default="{ row }">
+            <ElInputNumber v-model="row.loop" class="!w-30" placeholder="循环次数" />
+          </template>
+        </ElTableColumn>
+        <ElTableColumn prop="action" label="操作" width="120">
+          <template #default="{ row, $index }">
+            <ElButton
+              :icon="VideoPlay"
+              size="small"
+              type="primary"
+              @click="onPlay(row)"
+              @mousedown.prevent
+            />
+            <ElButton
+              :icon="Delete"
+              type="danger"
+              size="small"
+              @click="onProductionDelete($index)"
+              @mousedown.prevent
+            />
+          </template>
+        </ElTableColumn>
+      </ElTable>
+    </VueDraggable>
 
     <MethodDialog ref="methodDialogRef"></MethodDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Plus, Share, Upload, VideoPlay } from '@element-plus/icons-vue'
+import { Plus, Promotion, Share, Upload, VideoPlay } from '@element-plus/icons-vue'
 import {
   ElButton,
   ElMessage,
@@ -132,7 +155,7 @@ import {
 import { onUnmounted, ref, useTemplateRef } from 'vue'
 import { useEventListener, useLocalStorage, type Fn } from '@vueuse/core'
 import { getMousePosition, postRun } from '@/api'
-import { isNil, omit } from 'lodash-es'
+import { cloneDeep, isNil, omit } from 'lodash-es'
 import MethodDialog from './components/method-dialog.vue'
 import type { AutoUnpackMethod, AutoUnpackProduction } from '@/types'
 import { Delete, Edit } from '@element-plus/icons-vue'
@@ -145,6 +168,7 @@ const speed = useLocalStorage<number>('AutoUnpackSpeed', 1)
 const loop_count = useLocalStorage<number>('AutoUnpackLoopCount', 1)
 
 const production = useLocalStorage<AutoUnpackProduction[]>('AutoUnpackProduction', [])
+const selectedProduction = ref<AutoUnpackProduction[]>([])
 
 const x = ref<number>()
 const y = ref<number>()
@@ -152,6 +176,9 @@ const y = ref<number>()
 let stopPointerCapture: Fn | null = null
 
 stopPointerCapture = useEventListener('keypress', async (event) => {
+  if (methodDialogRef.value?.visible) {
+    return
+  }
   if (event.code === 'Space') {
     event.preventDefault()
     const mousePosition = await getMousePosition()
@@ -169,6 +196,8 @@ const typeFomatter = (row: AutoUnpackMethod) => {
     return '延迟'
   } else if (row.type === 'keyPress') {
     return '键盘按下'
+  } else if (row.type === 'continuousMoveClick') {
+    return '连续水平点击'
   }
   return ''
 }
@@ -209,11 +238,11 @@ const onRun = async () => {
   })
 }
 
-const onPlay = async (script: AutoUnpackMethod[]) => {
+const onPlay = async (row: AutoUnpackProduction) => {
   await postRun({
     speed: speed.value,
-    loop_count: loop_count.value,
-    data: script
+    loop_count: row.loop ?? loop_count.value,
+    data: row.script || []
   })
 }
 
@@ -268,6 +297,16 @@ const onClear = async () => {
   })
   data.value = []
   speed.value = 1
+}
+
+const onExecute = async () => {
+  for (const item of production.value) {
+    await onPlay(item)
+  }
+}
+
+const onProductionSelectionChange = (data: AutoUnpackProduction[]) => {
+  selectedProduction.value = cloneDeep(data)
 }
 
 onUnmounted(() => {

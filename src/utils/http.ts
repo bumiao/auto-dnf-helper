@@ -3,7 +3,7 @@ import { ElNotification } from 'element-plus'
 
 const http = axios.create({
   baseURL: '/api',
-  timeout: 60000 // 超时时间
+  timeout: 600000 // 超时时间
 })
 
 // 响应拦截器

@@ -10,8 +10,9 @@
         <ElSelect v-model="state.data.type" @change="onTypeChange">
           <ElOption label="鼠标移动" value="moveTo"></ElOption>
           <ElOption label="鼠标单击" value="click"></ElOption>
-          <ElOption label="键盘按下" value="keyPress"></ElOption>
+          <ElOption label="键盘按下" value="keyPress" disabled></ElOption>
           <ElOption label="延迟" value="delay"></ElOption>
+          <ElOption label="连续水平点击" value="continuousMoveClick"></ElOption>
         </ElSelect>
       </ElFormItem>
       <template v-if="state.data.type === 'moveTo'">
@@ -38,6 +39,20 @@
       <template v-else-if="state.data.type === 'delay'">
         <ElFormItem label="延迟时间(ms)">
           <ElInputNumber v-model="state.data.time"></ElInputNumber>
+        </ElFormItem>
+      </template>
+      <template v-else-if="state.data.type === 'continuousMoveClick'">
+        <ElFormItem label="X">
+          <ElInputNumber v-model="state.data.x"></ElInputNumber>
+        </ElFormItem>
+        <ElFormItem label="Y">
+          <ElInputNumber v-model="state.data.y"></ElInputNumber>
+        </ElFormItem>
+        <ElFormItem label="间距">
+          <ElInputNumber v-model="state.data.spacing"></ElInputNumber>
+        </ElFormItem>
+        <ElFormItem label="循环次数">
+          <ElInputNumber v-model="state.data.count"></ElInputNumber>
         </ElFormItem>
       </template>
       <ElFormItem label="描述">
@@ -67,6 +82,8 @@ import {
 import { cloneDeep } from 'lodash-es'
 import type { AutoUnpackMethod } from '@/types'
 import { useEventListener } from '@vueuse/core'
+import { v4 } from 'uuid'
+import { getMousePosition } from '@/api'
 
 let resolve: (value?: AutoUnpackMethod) => void | undefined
 
@@ -91,6 +108,9 @@ const close = () => {
 const show = async (initData?: AutoUnpackMethod) => {
   state.data = cloneDeep(initData ?? {}) as AutoUnpackMethod
   state.mode = initData ? 'edit' : 'add'
+  if (!state.data.id) {
+    state.data.id = v4()
+  }
   nextTick(() => {
     formRef.value?.clearValidate()
   })
@@ -101,7 +121,24 @@ const show = async (initData?: AutoUnpackMethod) => {
 }
 
 const onTypeChange = () => {
-  state.data = { type: state.data.type, description: state.data.description }
+  state.data = { type: state.data.type, description: state.data.description, id: state.data.id }
+  if (state.data.type === 'moveTo' || state.data.type === 'continuousMoveClick') {
+    useEventListener(
+      'keypress',
+      async (event) => {
+        if (
+          event.code === 'Space' &&
+          (state.data.type === 'moveTo' || state.data.type === 'continuousMoveClick')
+        ) {
+          event.preventDefault()
+          const mousePosition = await getMousePosition()
+          state.data.x = mousePosition?.x
+          state.data.y = mousePosition?.y
+        }
+      },
+      { once: true }
+    )
+  }
 }
 
 const onSubmit = async () => {
@@ -128,7 +165,7 @@ const onCaptureKeyPress = () => {
   )
 }
 
-defineExpose({ show, close })
+defineExpose({ show, close, visible })
 </script>
 
 <style lang="scss" scoped></style>

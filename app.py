@@ -3,6 +3,8 @@ import pyautogui
 import time
 import threading
 from pynput import keyboard
+import pydirectinput
+
 
 app = Flask(__name__)
 stop_script = threading.Event()  # 用于控制脚本运行的事件
@@ -82,29 +84,43 @@ def run_start():
 
             elif action_type == 'click':
                 key = action.get('key', 'left')
-                pyautogui.click(button=key)
+                # pyautogui.click(button=key)
+                pydirectinput.mouseDown(button=key)
+                time.sleep(0.005)
+                pydirectinput.mouseUp(button=key)
+                time.sleep(0.01)
 
             elif action_type == 'keyPress':
                 key = action.get('key', None)
                 if key:
-                    pyautogui.press(key)  # 按下并释放键
+                    pydirectinput.keyDown('a')  # 按下并释放键
                 else:
                     return jsonify({"status": "error", "message": "Key is required for keyPress action."}), 400
+                
+            elif action_type == 'continuousMoveClick':
+            # 获取参数
+                x = action.get('x', 0)
+                y = action.get('y', 0)
+                spacing = action.get('spacing', 50)  # 间距，默认值为 50
+                count = action.get('count', 7)  # 点击次数，默认值为 7
+
+                for i in range(count):
+                    if stop_script.is_set():  # 检查是否需要停止
+                        return jsonify({"status": "stopped", "message": "Script was stopped."})
+
+                    current_x = x + (spacing * i)
+                    pyautogui.moveTo(current_x, y, duration=0.1 * speed_factor)
+                    time.sleep(0.005)
+                    pydirectinput.mouseDown(button='left')
+                    time.sleep(0.005)
+                    pydirectinput.mouseUp(button='left')
+                    time.sleep(0.005)
+
 
             else:
                 return jsonify({"status": "error", "message": f"Unknown action type: {action_type}"}), 400
 
     return jsonify({"status": "success", "message": f"Actions executed successfully {current_loop} time(s)."})
-
-
-@app.errorhandler(404)
-def page_not_found(error):
-    return render_template('404.html'), 404
-
-
-@app.errorhandler(500)
-def internal_server_error(error):
-    return render_template('500.html'), 500
 
 
 if __name__ == '__main__':
