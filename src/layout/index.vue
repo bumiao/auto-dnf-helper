@@ -1,14 +1,14 @@
 <template>
   <ElContainer class="h-full w-full">
-    <ElAside width="200px">
-      <ElMenu :default-active="currentMenu" router class="h-full">
+    <ElAside width="auto">
+      <ElMenu :default-active="currentMenu" router class="h-full" collapse>
         <ElMenuItem index="/introduction">
           <ElIcon><House /></ElIcon>
-          Get Start
+          <span>Get Start</span>
         </ElMenuItem>
         <ElMenuItem index="/auto-unpack">
           <ElIcon><Box /></ElIcon>
-          Auto Unpack
+          <span>Auto Unpack</span>
         </ElMenuItem>
       </ElMenu>
     </ElAside>

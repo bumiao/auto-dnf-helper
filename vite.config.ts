@@ -4,7 +4,6 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueJsx from '@vitejs/plugin-vue-jsx'
 import ElementPlus from 'unplugin-element-plus/vite'
-import UnoCSS from 'unocss/vite'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -12,8 +11,7 @@ export default defineConfig({
   plugins: [
     vue(),
     vueJsx(),
-    ElementPlus({}),
-    UnoCSS()
+    ElementPlus({})
     // px2rem({
     //   width: 750,
     //   rootFontSize: 16
@@ -33,7 +31,7 @@ export default defineConfig({
     }
   },
   build: {
-    outDir: 'static',
+    outDir: 'dist/static',
     emptyOutDir: true
   }
 })

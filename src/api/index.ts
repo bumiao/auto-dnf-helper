@@ -10,6 +10,10 @@ export const getMousePosition = async () => {
   return data.data
 }
 
-export const postRun = async (data: AutoUnpackMethod[]) => {
+export const postRun = async (data: {
+  speed: number
+  loop_count: number
+  data: AutoUnpackMethod[]
+}) => {
   return await http.post('/run_start', data)
 }

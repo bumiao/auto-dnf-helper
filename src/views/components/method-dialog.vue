@@ -1,10 +1,16 @@
 <template>
-  <ElDialog :title="`${state.mode === 'add' ? 'Add' : 'Edit'}`" v-model="visible" @close="onCancel">
-    <ElForm label-width="150px" class="mr-12">
+  <ElDialog
+    draggable
+    :title="`${state.mode === 'add' ? 'Add' : 'Edit'}`"
+    v-model="visible"
+    @close="onCancel"
+  >
+    <ElForm label-width="20%" class="mr-[10%]">
       <ElFormItem label="方法">
         <ElSelect v-model="state.data.type" @change="onTypeChange">
           <ElOption label="鼠标移动" value="moveTo"></ElOption>
           <ElOption label="鼠标单击" value="click"></ElOption>
+          <ElOption label="键盘按下" value="keyPress"></ElOption>
           <ElOption label="延迟" value="delay"></ElOption>
         </ElSelect>
       </ElFormItem>
@@ -22,6 +28,11 @@
             <ElOption label="左键" value="left"></ElOption>
             <ElOption label="右键" value="right"></ElOption>
           </ElSelect>
+        </ElFormItem>
+      </template>
+      <template v-else-if="state.data.type === 'keyPress'">
+        <ElFormItem label="键值">
+          <ElButton @click="onCaptureKeyPress">{{ state.data.key ?? '点击捕获按键' }}</ElButton>
         </ElFormItem>
       </template>
       <template v-else-if="state.data.type === 'delay'">
@@ -55,6 +66,7 @@ import {
 } from 'element-plus'
 import { cloneDeep } from 'lodash-es'
 import type { AutoUnpackMethod } from '@/types'
+import { useEventListener } from '@vueuse/core'
 
 let resolve: (value?: AutoUnpackMethod) => void | undefined
 
@@ -101,6 +113,19 @@ const onSubmit = async () => {
 const onCancel = () => {
   resolve()
   close()
+}
+
+const onCaptureKeyPress = () => {
+  if (state.data.type !== 'keyPress') return
+  useEventListener(
+    'keypress',
+    ({ key }) => {
+      if (state.data.type === 'keyPress') {
+        state.data.key = key
+      }
+    },
+    { once: true }
+  )
 }
 
 defineExpose({ show, close })

@@ -1,8 +1,26 @@
 from flask import Flask, jsonify, request, render_template, send_from_directory
 import pyautogui
 import time
+import threading
+from pynput import keyboard
 
 app = Flask(__name__)
+stop_script = threading.Event()  # 用于控制脚本运行的事件
+
+
+# 后台线程监听键盘
+def listen_keyboard():
+    def on_press(key):
+        try:
+            if key == keyboard.Key.esc:  # 按下 Esc 键停止脚本
+                print("Esc 键被按下，停止脚本运行")
+                stop_script.set()
+        except Exception as e:
+            print(f"键盘监听错误: {e}")
+
+    with keyboard.Listener(on_press=on_press) as listener:
+        listener.join()
+
 
 # 配置静态文件的根路径
 @app.route('/')
@@ -10,17 +28,6 @@ app = Flask(__name__)
 def serve_static(path='index.html'):
     return send_from_directory(app.static_folder, path)
 
-@app.route('/api/move_mouse', methods=['POST'])
-def move_mouse():
-    data = request.get_json()
-    x = data.get('x', 0)
-    y = data.get('y', 0)
-    print(x, y)
-
-    # 使用 pyautogui 移动鼠标
-    pyautogui.moveTo(x, y, duration=0.3)
-    1
-    return jsonify({"status": "success", "message": f"Moved mouse to ({x}, {y})"})
 
 @app.route('/api/mouse_position', methods=['GET'])
 def get_mouse_position():
@@ -31,38 +38,78 @@ def get_mouse_position():
 
 @app.route('/api/run_start', methods=['POST'])
 def run_start():
-    data = request.get_json()
+    body = request.get_json()
+
+    # 验证 body 格式
+    if not isinstance(body, dict) or 'data' not in body or 'speed' not in body:
+        return jsonify({"status": "error", "message": "Invalid body format. Expected 'speed' and 'data' fields."}), 400
+
+    speed = body.get('speed', 1.0)
+    data = body.get('data')
+    loop_count = body.get('loop_count', 1)  # 新增循环次数参数，默认值为1
+
     if not isinstance(data, list):
-        return jsonify({"status": "error", "message": "Invalid data format, expected a list."}), 400
+        return jsonify({"status": "error", "message": "Invalid 'data' format, expected a list."}), 400
 
-    for action in data:
-        action_type = action.get('type')
+    if speed < 0.2 or speed > 5.0:
+        return jsonify({"status": "error", "message": "Speed must be between 0.2 and 5.0."}), 400
 
-        if action_type == 'moveTo':
-            x = action.get('x', 0)
-            y = action.get('y', 0)
-            pyautogui.moveTo(x, y, duration=0.3)
+    if not isinstance(loop_count, int) or loop_count < -1:
+        return jsonify({"status": "error", "message": "Loop count must be an integer >= -1."}), 400
 
-        elif action_type == 'delay':
-            delay_time = action.get('time', 0) / 1000  # 转换为秒
-            time.sleep(delay_time)
+    # 调整速度的因子：速度越大，操作时间越短
+    speed_factor = 1 / speed
 
-        elif action_type == 'click':
-            key = action.get('key', 'left')
-            pyautogui.click(button=key)
+    stop_script.clear()  # 重置停止事件
+    current_loop = 0  # 当前执行的循环次数
 
-        else:
-            return jsonify({"status": "error", "message": f"Unknown action type: {action_type}"}), 400
+    while loop_count == -1 or current_loop < loop_count:
+        current_loop += 1
+        for action in data:
+            if stop_script.is_set():  # 检查是否需要停止
+                return jsonify({"status": "stopped", "message": "Script was stopped."})
 
-    return jsonify({"status": "success", "message": "Actions executed successfully."})
+            action_type = action.get('type')
+
+            if action_type == 'moveTo':
+                x = action.get('x', 0)
+                y = action.get('y', 0)
+                pyautogui.moveTo(x, y, duration=0.15 * speed_factor)
+
+            elif action_type == 'delay':
+                delay_time = action.get('time', 0) / 1000  # 转换为秒
+                time.sleep(delay_time * speed_factor)
+
+            elif action_type == 'click':
+                key = action.get('key', 'left')
+                pyautogui.click(button=key)
+
+            elif action_type == 'keyPress':
+                key = action.get('key', None)
+                if key:
+                    pyautogui.press(key)  # 按下并释放键
+                else:
+                    return jsonify({"status": "error", "message": "Key is required for keyPress action."}), 400
+
+            else:
+                return jsonify({"status": "error", "message": f"Unknown action type: {action_type}"}), 400
+
+    return jsonify({"status": "success", "message": f"Actions executed successfully {current_loop} time(s)."})
+
 
 @app.errorhandler(404)
 def page_not_found(error):
     return render_template('404.html'), 404
 
+
 @app.errorhandler(500)
 def internal_server_error(error):
     return render_template('500.html'), 500
 
+
 if __name__ == '__main__':
+    # 启动键盘监听器线程
+    keyboard_listener = threading.Thread(target=listen_keyboard, daemon=True)
+    keyboard_listener.start()
+
     app.run(debug=True)

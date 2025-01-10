@@ -1,54 +1,150 @@
 <template>
   <div>
+    <div class="text-lg font-bold">Auto Unpack</div>
+    <ElAlert
+      title="通过配置启动脚本。在运行过程中按下ESC键可以强制终止。"
+      type="info"
+      show-icon
+      :closable="false"
+      class="!mb-4"
+    />
     <div>通过空格捕获坐标</div>
-    <div v-if="!isNil(x) && !isNil(y)" class="color-gray text-xs">
+    <div v-if="!isNil(x) && !isNil(y)" class="color-gray text-xs mt-2">
       已捕获坐标: x : <ElTag>{{ x }}</ElTag> y : <ElTag>{{ y }}</ElTag>
     </div>
 
-    <ElButton class="mt-4 mb-4" type="primary" @click="onAdd">Add</ElButton>
-    <ElButton class="mt-4 mb-4" type="success" @click="onRun">Run</ElButton>
+    <ElButton class="mt-4 mb-4" type="primary" :icon="Plus" @click="onAdd" @mousedown.prevent>
+      Add
+    </ElButton>
+    <ElButton class="mt-4 mb-4" type="success" @click="onRun" :icon="VideoPlay" @mousedown.prevent>
+      Run
+    </ElButton>
+    <ElTooltip placement="top" content="导出至剪贴板">
+      <ElButton class="mt-4 mb-4" :icon="Share" @click="onExport" @mousedown.prevent>
+        导出
+      </ElButton>
+    </ElTooltip>
+    <ElTooltip placement="top" content="从剪贴板导入">
+      <ElButton class="mt-4 mb-4" :icon="Upload" @click="onImport" @mousedown.prevent>
+        导入
+      </ElButton>
+    </ElTooltip>
+    <ElButton type="danger" @click="onClear" @mousedown.prevent>重置</ElButton>
 
     <VueDraggable v-model="data" :animation="150" target="tbody">
-      <ElTable :data="data">
-        <ElTableColumn
-          prop="type"
-          label="方法"
-          width="200"
-          :formatter="typeFomatter"
-        ></ElTableColumn>
+      <ElTable :data="data" :max-height="500" border>
+        <ElTableColumn prop="type" label="方法" :formatter="typeFomatter"></ElTableColumn>
+        <ElTableColumn prop="prop" label="属性">
+          <template #default="{ row }: { row: AutoUnpackMethod }">
+            {{ omit(row, ['type', 'description']) }}
+          </template>
+        </ElTableColumn>
         <ElTableColumn prop="description" label="描述"></ElTableColumn>
-        <ElTableColumn prop="action" label="操作" width="200">
+        <ElTableColumn prop="action" label="操作" width="120">
           <template #default="{ row, $index }">
-            <ElButton :icon="Edit" size="small" @click="onEdit(row, $index)"></ElButton>
+            <ElButton
+              :icon="Edit"
+              size="small"
+              @click="onEdit(row, $index)"
+              @mousedown.prevent
+            ></ElButton>
             <ElButton
               :icon="Delete"
               type="danger"
               size="small"
               @click="onDelete($index)"
+              @mousedown.prevent
             ></ElButton>
           </template>
         </ElTableColumn>
       </ElTable>
     </VueDraggable>
 
+    <ElForm class="mt-4" label-width="10%" label-position="top">
+      <ElFormItem label="微调变速" class="h-32">
+        <ElAlert title="整体的自动化操作会被加速或减速" type="info" show-icon :closable="false" />
+        <div class="!w-[50%] ml-8">
+          <ElSlider
+            v-model="speed"
+            :min="0.2"
+            :max="3"
+            :step="0.1"
+            :marks="{ 0.2: '最慢', 1: '标准', 3: '最快' }"
+          />
+        </div>
+      </ElFormItem>
+      <ElFormItem label="循环次数 (整数,其中-1表示无限次)">
+        <ElInputNumber v-model="loop_count" :min="-1" :max="999" />
+      </ElFormItem>
+    </ElForm>
+
+    <div>暂存的脚本</div>
+    <ElButton class="mt-4 mb-4" :icon="Upload" @click="onImportProduction" @mousedown.prevent>
+      导入
+    </ElButton>
+    <ElTable :data="production" :max-height="500" border>
+      <ElTableColumn prop="name" label="名称">
+        <template #default="{ row }">
+          <ElInput v-model="row.name" class="!w-80" placeholder="给脚本取个名吧"></ElInput>
+        </template>
+      </ElTableColumn>
+      <ElTableColumn prop="action" label="操作" width="120">
+        <template #default="{ row, $index }">
+          <ElButton
+            :icon="VideoPlay"
+            size="small"
+            type="primary"
+            @click="onPlay(row.script)"
+            @mousedown.prevent
+          />
+          <ElButton
+            :icon="Delete"
+            type="danger"
+            size="small"
+            @click="onProductionDelete($index)"
+            @mousedown.prevent
+          ></ElButton>
+        </template>
+      </ElTableColumn>
+    </ElTable>
+
     <MethodDialog ref="methodDialogRef"></MethodDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ElButton, ElIcon, ElMessageBox, ElTable, ElTableColumn, ElTag } from 'element-plus'
+import { Plus, Share, Upload, VideoPlay } from '@element-plus/icons-vue'
+import {
+  ElButton,
+  ElMessage,
+  ElMessageBox,
+  ElTooltip,
+  ElTable,
+  ElTableColumn,
+  ElTag,
+  ElForm,
+  ElFormItem,
+  ElSlider,
+  ElAlert,
+  ElInputNumber,
+  ElInput
+} from 'element-plus'
 import { onUnmounted, ref, useTemplateRef } from 'vue'
 import { useEventListener, useLocalStorage, type Fn } from '@vueuse/core'
 import { getMousePosition, postRun } from '@/api'
-import { isNil } from 'lodash-es'
+import { isNil, omit } from 'lodash-es'
 import MethodDialog from './components/method-dialog.vue'
-import type { AutoUnpackMethod } from '@/types'
-import { Delete, Edit, MessageBox } from '@element-plus/icons-vue'
+import type { AutoUnpackMethod, AutoUnpackProduction } from '@/types'
+import { Delete, Edit } from '@element-plus/icons-vue'
 import { VueDraggable } from 'vue-draggable-plus'
 
 const methodDialogRef = useTemplateRef('methodDialogRef')
 
 const data = useLocalStorage<AutoUnpackMethod[]>('AutoUnpackData', [])
+const speed = useLocalStorage<number>('AutoUnpackSpeed', 1)
+const loop_count = useLocalStorage<number>('AutoUnpackLoopCount', 1)
+
+const production = useLocalStorage<AutoUnpackProduction[]>('AutoUnpackProduction', [])
 
 const x = ref<number>()
 const y = ref<number>()
@@ -57,6 +153,7 @@ let stopPointerCapture: Fn | null = null
 
 stopPointerCapture = useEventListener('keypress', async (event) => {
   if (event.code === 'Space') {
+    event.preventDefault()
     const mousePosition = await getMousePosition()
     x.value = mousePosition?.x
     y.value = mousePosition?.y
@@ -68,9 +165,12 @@ const typeFomatter = (row: AutoUnpackMethod) => {
     return '鼠标移动'
   } else if (row.type === 'click') {
     return '鼠标单击'
-  } else {
+  } else if (row.type === 'delay') {
     return '延迟'
+  } else if (row.type === 'keyPress') {
+    return '键盘按下'
   }
+  return ''
 }
 
 const onAdd = async () => {
@@ -94,8 +194,80 @@ const onDelete = async (index: number) => {
   data.value.splice(index, 1)
 }
 
+const onProductionDelete = async (index: number) => {
+  await ElMessageBox.confirm('确定要删除吗', {
+    type: 'warning'
+  })
+  production.value.splice(index, 1)
+}
+
 const onRun = async () => {
-  await postRun(data.value)
+  await postRun({
+    speed: speed.value,
+    loop_count: loop_count.value,
+    data: data.value
+  })
+}
+
+const onPlay = async (script: AutoUnpackMethod[]) => {
+  await postRun({
+    speed: speed.value,
+    loop_count: loop_count.value,
+    data: script
+  })
+}
+
+const onExport = async () => {
+  await navigator.clipboard.writeText(JSON.stringify(data.value).replace(/\s+/g, ''))
+  ElMessage.success({
+    message: '已成功导出到剪贴板'
+  })
+}
+
+const onImport = async () => {
+  try {
+    // 从剪贴板读取数据
+    const clipboardText = await navigator.clipboard.readText()
+    // 尝试解析为 JSON
+    const importedData = JSON.parse(clipboardText)
+    // 将解析后的数据赋值给目标变量
+    data.value = importedData
+    ElMessage.success({
+      message: '已成功从剪贴板导入数据'
+    })
+  } catch (error) {
+    // 处理解析错误或其他错误
+    ElMessage.error({
+      message: '导入失败：剪贴板内容无效或不是合法的 JSON 数据'
+    })
+  }
+}
+
+const onImportProduction = async () => {
+  try {
+    // 从剪贴板读取数据
+    const clipboardText = await navigator.clipboard.readText()
+    // 尝试解析为 JSON
+    const importedData = JSON.parse(clipboardText)
+    // 将解析后的数据赋值给目标变量
+    production.value.push({ name: '', script: importedData })
+    ElMessage.success({
+      message: '已成功从剪贴板导入数据'
+    })
+  } catch (error) {
+    // 处理解析错误或其他错误
+    ElMessage.error({
+      message: '导入失败：剪贴板内容无效或不是合法的 JSON 数据'
+    })
+  }
+}
+
+const onClear = async () => {
+  await ElMessageBox.confirm('确定要重置吗', {
+    type: 'warning'
+  })
+  data.value = []
+  speed.value = 1
 }
 
 onUnmounted(() => {
