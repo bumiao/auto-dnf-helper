@@ -32,32 +32,38 @@
     <ElButton type="danger" @click="onClear" @mousedown.prevent>重置</ElButton>
 
     <VueDraggable v-model="data" :animation="150" target="tbody">
-      <ElTable :data="data" :max-height="500" border row-key="id">
-        <ElTableColumn prop="type" label="方法" :formatter="typeFomatter"></ElTableColumn>
-        <ElTableColumn prop="prop" label="属性">
+      <VxeTable
+        :data="data"
+        :row-config="{ keyField: 'id' }"
+        size="small"
+        max-height="500px"
+        border
+      >
+        <VxeColumn field="type" title="方法" :formatter="typeFomatter"></VxeColumn>
+        <VxeColumn field="prop" title="属性">
           <template #default="{ row }: { row: AutoUnpackMethod }">
-            {{ omit(row, ['type', 'description', 'id']) }}
+            {{ JSON.stringify(omit(row, ['type', 'description', 'id'])).replace(/\s+/g, '') }}
           </template>
-        </ElTableColumn>
-        <ElTableColumn prop="description" label="描述"></ElTableColumn>
-        <ElTableColumn prop="action" label="操作" width="120">
-          <template #default="{ row, $index }">
+        </VxeColumn>
+        <VxeColumn field="description" title="描述"></VxeColumn>
+        <VxeColumn field="action" title="操作" width="120">
+          <template #default="{ row, rowIndex }">
             <ElButton
               :icon="Edit"
               size="small"
-              @click="onEdit(row, $index)"
+              @click="onEdit(row, rowIndex)"
               @mousedown.prevent
             ></ElButton>
             <ElButton
               :icon="Delete"
               type="danger"
               size="small"
-              @click="onDelete($index)"
+              @click="onDelete(rowIndex)"
               @mousedown.prevent
             ></ElButton>
           </template>
-        </ElTableColumn>
-      </ElTable>
+        </VxeColumn>
+      </VxeTable>
     </VueDraggable>
 
     <ElForm class="mt-4" label-width="10%" label-position="top">
@@ -93,25 +99,37 @@
     </ElButton>
 
     <VueDraggable v-model="production" :animation="150" target="tbody">
-      <ElTable
+      <VxeTable
+        ref="productionTableRef"
         :data="production"
         :max-height="500"
+        size="small"
         border
-        @selection-change="onProductionSelectionChange"
+        @checkbox-change="onProductionSelectionChange"
       >
-        <ElTableColumn type="selection"> </ElTableColumn>
-        <ElTableColumn prop="name" label="名称">
+        <VxeColumn type="checkbox" width="40px"> </VxeColumn>
+        <VxeColumn field="name" title="名称">
           <template #default="{ row }">
-            <ElInput v-model="row.name" class="!w-80" placeholder="给脚本取个名吧"></ElInput>
+            <ElInput
+              v-model="row.name"
+              class="!w-[100%]"
+              placeholder="给脚本取个名吧"
+              @mousedown.stop.prevent
+            ></ElInput>
           </template>
-        </ElTableColumn>
-        <ElTableColumn prop="loop" label="循环">
+        </VxeColumn>
+        <VxeColumn field="loop" title="循环">
           <template #default="{ row }">
-            <ElInputNumber v-model="row.loop" class="!w-30" placeholder="循环次数" />
+            <ElInputNumber
+              v-model="row.loop"
+              class="!w-[100%]"
+              placeholder="循环次数"
+              @mousedown.stop.prevent
+            />
           </template>
-        </ElTableColumn>
-        <ElTableColumn prop="action" label="操作" width="120">
-          <template #default="{ row, $index }">
+        </VxeColumn>
+        <VxeColumn field="action" title="操作" width="120">
+          <template #default="{ row, rowIndex }">
             <ElButton
               :icon="VideoPlay"
               size="small"
@@ -123,12 +141,12 @@
               :icon="Delete"
               type="danger"
               size="small"
-              @click="onProductionDelete($index)"
+              @click="onProductionDelete(rowIndex)"
               @mousedown.prevent
             />
           </template>
-        </ElTableColumn>
-      </ElTable>
+        </VxeColumn>
+      </VxeTable>
     </VueDraggable>
 
     <MethodDialog ref="methodDialogRef"></MethodDialog>
@@ -142,8 +160,6 @@ import {
   ElMessage,
   ElMessageBox,
   ElTooltip,
-  ElTable,
-  ElTableColumn,
   ElTag,
   ElForm,
   ElFormItem,
@@ -160,8 +176,11 @@ import MethodDialog from './components/method-dialog.vue'
 import type { AutoUnpackMethod, AutoUnpackProduction } from '@/types'
 import { Delete, Edit } from '@element-plus/icons-vue'
 import { VueDraggable } from 'vue-draggable-plus'
+import { VxeColumn, VxeTable, type VxeTableInstance } from 'vxe-table'
 
 const methodDialogRef = useTemplateRef('methodDialogRef')
+const productionTableRef =
+  useTemplateRef<VxeTableInstance<AutoUnpackProduction>>('productionTableRef')
 
 const data = useLocalStorage<AutoUnpackMethod[]>('AutoUnpackData', [])
 const speed = useLocalStorage<number>('AutoUnpackSpeed', 1)
@@ -187,7 +206,7 @@ stopPointerCapture = useEventListener('keypress', async (event) => {
   }
 })
 
-const typeFomatter = (row: AutoUnpackMethod) => {
+const typeFomatter = ({ row }: { row: AutoUnpackMethod }) => {
   if (row.type === 'moveTo') {
     return '鼠标移动'
   } else if (row.type === 'click') {
@@ -300,13 +319,14 @@ const onClear = async () => {
 }
 
 const onExecute = async () => {
-  for (const item of production.value) {
+  for (const item of selectedProduction.value) {
     await onPlay(item)
   }
 }
 
-const onProductionSelectionChange = (data: AutoUnpackProduction[]) => {
-  selectedProduction.value = cloneDeep(data)
+const onProductionSelectionChange = () => {
+  // 勾选的时候可能不会按照顺序 todo
+  selectedProduction.value = cloneDeep(productionTableRef.value?.getCheckboxRecords() ?? [])
 }
 
 onUnmounted(() => {
